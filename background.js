@@ -1,8 +1,7 @@
 // background.js · Chrome 扩展后台服务：Cookie 读写、账号存储与页面重载
 // @author Li · GPL-3.0 · https://github.com/admin0x/doubaokit
 
-// 受支持站点注册表：新增站点只改这里，其余逻辑自动适配
-// content / doubao-kit / popup 各有一份裁剪副本，需与这里保持一致
+// 受支持站点注册表：新增站点只改这里；popup / content / media-kit 各有一份裁剪副本需同步
 const SITES = [
   {
     id: 'doubao',
@@ -10,6 +9,7 @@ const SITES = [
     chatUrl: 'https://www.doubao.com/chat/',
     tabUrlPatterns: ['https://www.doubao.com/*', 'https://*.doubao.com/*'],
     origins: ['https://www.doubao.com', 'https://doubao.com'],
+    cookieDomains: ['doubao.com', 'www.doubao.com'],
     hosts: ['doubao.com'],
   },
   {
@@ -18,37 +18,14 @@ const SITES = [
     chatUrl: 'https://www.dola.com/chat/',
     tabUrlPatterns: ['https://www.dola.com/*', 'https://*.dola.com/*'],
     origins: ['https://www.dola.com', 'https://dola.com'],
+    cookieDomains: ['dola.com', 'www.dola.com'],
     hosts: ['dola.com'],
   },
 ];
-// 站点 id 无效时回退到第一个站点
 const DEFAULT_SITE = SITES[0];
-// 所有受支持站点的标签页匹配式，站点未知时使用
 const ALL_TAB_URL_PATTERNS = SITES.flatMap((site) => site.tabUrlPatterns);
 
-// 本地存储键名
-const STORAGE_KEYS = {
-  accounts: 'accounts',
-  pendingLogin: 'pendingLogin',
-  currentAccountId: 'currentAccountId',
-};
-// 认定登录成功所需的最少 Cookie 数
-const LOGIN_COOKIE_MIN_COUNT = 2;
-// Cookie 变化后延迟多久再检测登录
-const LOGIN_DETECT_DELAY_MS = 1400;
-// 保存前留给页面拉取账号资料的等待时间
-const PROFILE_READY_DELAY_MS = 1800;
-// 角标颜色：进行中
-const BADGE_BUSY_COLOR = '#203b27';
-// 角标颜色：成功
-const BADGE_SUCCESS_COLOR = '#166534';
-
-// 登录检测定时器按标签页分存，多个流程互不干扰
-const loginDetectTimers = new Map();
-// 插件主动关闭的登录窗口，登记后避免被误判为异常关闭
-const autoClosingLoginWindows = new Set();
-
-// 规范化域名，去掉前导点与 www
+// 站点识别：页面 URL 与 Cookie 共用同一口径
 function normalizeHost(host) {
   return String(host || '')
     .replace(/^\.|^www\./, '')
@@ -93,6 +70,76 @@ function getAccountSiteId(account) {
 // 只取某站点的账号，豆包与 Dola 的快照互不干扰
 function scopeAccounts(accounts, siteId) {
   return (accounts || []).filter((account) => getAccountSiteId(account) === siteId);
+}
+
+// 本地存储键名
+const STORAGE_KEYS = {
+  accounts: 'accounts',
+  pendingLogin: 'pendingLogin',
+  currentAccountId: 'currentAccountId',
+};
+
+// 认定登录成功所需的最少鉴权 Cookie 数
+const LOGIN_COOKIE_MIN_COUNT = 2;
+// Cookie 变化后延迟多久再检测登录
+const LOGIN_DETECT_DELAY_MS = 1400;
+// 保存前留给页面拉取账号资料的等待时间
+const PROFILE_READY_DELAY_MS = 1800;
+// 登录检测：事件驱动 + 告警兜底，不用递归 setTimeout 链
+const LOGIN_DETECT_ALARM = 'doubaokit-login-detect';
+const LOGIN_DETECT_ALARM_PERIOD_MINUTES = 1;
+// 角标颜色：进行中
+const BADGE_BUSY_COLOR = '#203b27';
+// 角标颜色：成功
+const BADGE_SUCCESS_COLOR = '#166534';
+// 下载文件名允许的字符，其余一律剔除
+const SAFE_FILENAME_PATTERN = /[^a-zA-Z0-9._\-\u4e00-\u9fa5()[\] ]/g;
+
+// 登录检测定时器按站点分存，两个站点同时添加账号互不干扰
+const loginDetectTimers = new Map();
+// 保存流程互斥锁，避免并发产生重复快照
+let saveChain = Promise.resolve();
+const autoClosingLoginWindows = new Set();
+
+// 允许落入账号快照的鉴权 Cookie 名特征
+const STORED_COOKIE_PATTERNS = [
+  /^sessionid(_ss)?$/i,
+  /^sid_tt(_ss)?$/i,
+  /^uid_tt(_ss)?$/i,
+  /^sid_guard$/i,
+  /^passport_/i,
+  /csrf/i,
+  /session/i,
+  /login/i,
+  /oauth/i,
+  /auth/i,
+  /token/i,
+];
+
+// 排除缓存与埋点类 Cookie，它们不是登录凭据
+const EXCLUDED_COOKIE_PATTERNS = [
+  /^__tea_/i,
+  /^_ga/i,
+  /^_tea_/i,
+  /^ttwid$/i,
+  /^msToken$/i,
+  /^ab_version/i,
+  /cache/i,
+];
+
+// 延时等待
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// 串行执行器，前一个任务无论成败都不影响后一个
+function withSaveLock(task) {
+  const result = saveChain.then(task, task);
+  saveChain = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
 }
 
 // 读取本地存储，取不到则返回兜底值
@@ -149,12 +196,25 @@ function getCookieMatchKey(cookie) {
   ].join('|');
 }
 
+// 挑出鉴权 Cookie，落盘与比对共用同一口径
+function filterAuthCookies(cookies) {
+  const picked = (cookies || []).filter((cookie) => {
+    const name = String(cookie.name || '');
+    if (EXCLUDED_COOKIE_PATTERNS.some((pattern) => pattern.test(name))) return false;
+    return STORED_COOKIE_PATTERNS.some((pattern) => pattern.test(name));
+  });
+
+  // 白名单全落空说明规则失效，退回全量避免存下空快照
+  if (!picked.length) return cookies || [];
+  return picked;
+}
+
 // 按 Cookie 找已保存账号：先比整体指纹，再按权重打分
 function findSavedAccountByCookies(accounts, cookies) {
-  const fingerprint = getCookieFingerprint(cookies);
+  const fingerprint = getCookieFingerprint(filterAuthCookies(cookies));
   if (!fingerprint) return null;
   const exactMatch = (accounts || []).find(
-    (account) => getCookieFingerprint(account.cookies || []) === fingerprint,
+    (account) => getCookieFingerprint(filterAuthCookies(account.cookies || [])) === fingerprint,
   );
   if (exactMatch) return exactMatch;
 
@@ -203,11 +263,29 @@ function findSavedAccountByProfile(accounts, profile) {
   return nameMatches.length === 1 ? nameMatches[0] : null;
 }
 
+// 按站点自己的域查询并去重，绝不 getAll({}) 把其他站点的 Cookie 也读进内存
+async function queryCookieRecords(site) {
+  const target = getSiteById(site?.id);
+  const batches = await Promise.all(
+    target.cookieDomains.map((domain) => chrome.cookies.getAll({ domain }).catch(() => [])),
+  );
+
+  // 多次查询会重叠，按名称域路径去重
+  const seen = new Set();
+  const cookies = [];
+  for (const cookie of batches.flat()) {
+    if (!isSameSiteCookie(cookie, target)) continue;
+    const key = [cookie.name, cookie.domain, cookie.path, cookie.storeId].join('|');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    cookies.push(cookie);
+  }
+  return cookies;
+}
+
 // 读取当前站点的 Cookie 快照
 async function getSiteCookies(site) {
-  const target = getSiteById(site?.id);
-  const allCookies = await chrome.cookies.getAll({});
-  const cookies = allCookies.filter((cookie) => isSameSiteCookie(cookie, target));
+  const cookies = await queryCookieRecords(site);
   return cookies.map((cookie) => ({
     name: cookie.name,
     value: cookie.value,
@@ -223,7 +301,7 @@ async function getSiteCookies(site) {
   }));
 }
 
-// Cookie 必须属于当前站点，杜绝跨站读写
+// Cookie 必须属于当前站点，杜绝跨站写入
 function isSameSiteCookie(cookie, site) {
   const owner = getSiteByHost(cookie.domain);
   return Boolean(owner && site && owner.id === getSiteById(site?.id).id);
@@ -240,7 +318,7 @@ function getCookieSetUrl(cookie, site) {
 // 清空当前站点的 Cookie
 async function clearSiteCookies(site) {
   const target = getSiteById(site?.id);
-  const cookies = await getSiteCookies(target);
+  const cookies = await queryCookieRecords(target);
   await Promise.all(
     cookies.map((cookie) => {
       const details = {
@@ -304,7 +382,7 @@ async function restoreCookies(cookies, site) {
   }
 }
 
-// 查指定站点的标签页，站点为空时查所有受支持站点
+// site 为空时查所有受支持站点的标签页
 async function querySiteTabs(site) {
   return chrome.tabs.query({
     url: site ? site.tabUrlPatterns : ALL_TAB_URL_PATTERNS,
@@ -317,14 +395,13 @@ async function updateActionAvailability(tabId, url) {
   const site = getSiteByUrl(url);
   if (site) {
     await chrome.action.enable(tabId).catch(() => null);
-    await chrome.action.setTitle({ tabId, title: `${site.label}助手与账号管理` }).catch(() => null);
+    await chrome.action
+      .setTitle({ tabId, title: `${site.label}助手 · 账号管理` })
+      .catch(() => null);
   } else {
     await chrome.action.disable(tabId).catch(() => null);
     await chrome.action
-      .setTitle({
-        tabId,
-        title: `请先打开${SITES.map((item) => item.label).join(' / ')}页面`,
-      })
+      .setTitle({ tabId, title: `请先打开${SITES.map((item) => item.label).join(' / ')}页面` })
       .catch(() => null);
   }
 }
@@ -394,7 +471,9 @@ async function getActiveSiteTab(site) {
 async function askContentForAccountProfile(tabId) {
   if (!tabId) return { name: '', avatarUrl: '', mobile: '', source: '', site: '' };
   try {
-    const response = await chrome.tabs.sendMessage(tabId, { type: 'GET_ACCOUNT_PROFILE' });
+    const response = await chrome.tabs.sendMessage(tabId, {
+      type: 'GET_ACCOUNT_PROFILE',
+    });
     return {
       name: response?.name || '',
       avatarUrl: response?.avatarUrl || '',
@@ -404,7 +483,14 @@ async function askContentForAccountProfile(tabId) {
       isLoggedIn: Boolean(response?.isLoggedIn),
     };
   } catch {
-    return { name: '', avatarUrl: '', mobile: '', source: '', site: '', isLoggedIn: false };
+    return {
+      name: '',
+      avatarUrl: '',
+      mobile: '',
+      source: '',
+      site: '',
+      isLoggedIn: false,
+    };
   }
 }
 
@@ -414,7 +500,7 @@ function fallbackAccountName(site) {
 }
 
 // 保存账号快照：只在同站点内比对，命中已有账号则直接复用
-async function saveAccountFromTab(
+async function saveAccountFromTabUnlocked(
   tabId,
   { preferredName = '', notLoggedInError, throwOnDuplicate = false, site } = {},
 ) {
@@ -427,7 +513,12 @@ async function saveAccountFromTab(
   if (!cookies.length) {
     throw new Error(`当前没有检测到${target.label}登录 Cookie，无法保存`);
   }
+
+  // 只落盘鉴权 Cookie
+  const storableCookies = filterAuthCookies(cookies);
   const allAccounts = await getStored(STORAGE_KEYS.accounts, []);
+
+  // 只在同站点内比对，豆包与 Dola 的快照互不相认
   const accounts = scopeAccounts(allAccounts, target.id);
   const existingAccount =
     findSavedAccountByCookies(accounts, cookies) || findSavedAccountByProfile(accounts, profile);
@@ -445,7 +536,7 @@ async function saveAccountFromTab(
     name: preferredName || profile.name || fallbackAccountName(target),
     avatarUrl: profile.avatarUrl || '',
     mobile: profile.mobile || '',
-    cookies,
+    cookies: storableCookies,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -455,6 +546,11 @@ async function saveAccountFromTab(
     [STORAGE_KEYS.currentAccountId]: account.id,
   });
   return account;
+}
+
+// 保存账号快照的对外入口，串行化避免写入重复快照
+function saveAccountFromTab(tabId, options = {}) {
+  return withSaveLock(() => saveAccountFromTabUnlocked(tabId, options));
 }
 
 // 保存当前标签页已登录的账号
@@ -545,11 +641,42 @@ async function getCurrentAccount(accounts = null, profile = null, site = null) {
   return matchedAccount;
 }
 
+// 统一收尾：清 pending、撤告警与定时器
+async function clearPendingLogin() {
+  await chrome.storage.local.remove(STORAGE_KEYS.pendingLogin);
+  await chrome.alarms.clear(LOGIN_DETECT_ALARM).catch(() => null);
+  clearAllLoginDetectTimers();
+}
+
+// 清掉全部待触发的登录检测
+function clearAllLoginDetectTimers() {
+  for (const timer of loginDetectTimers.values()) clearTimeout(timer);
+  loginDetectTimers.clear();
+}
+
+// 兜底心跳，SW 被回收后仍能唤醒
+async function ensureLoginDetectAlarm() {
+  const existing = await chrome.alarms.get(LOGIN_DETECT_ALARM).catch(() => null);
+  if (existing) return;
+  await chrome.alarms
+    .create(LOGIN_DETECT_ALARM, { periodInMinutes: LOGIN_DETECT_ALARM_PERIOD_MINUTES })
+    .catch(() => null);
+}
+
+// 恢复备份 Cookie 并重载页面
+async function restoreBackupCookies(cookies, site) {
+  if (!cookies || !cookies.length) return;
+  const target = getSiteById(site?.id);
+  await restoreCookies(cookies, target);
+  await reloadSiteTabs(target);
+}
+
 // 打开登录窗口，进入添加账号流程
 async function startQrLogin(site) {
   const target = getSiteById(site?.id);
-  // 备份当前登录态，供取消时恢复
-  const backupCookies = await getSiteCookies(target);
+
+  // 备份同样只留鉴权 Cookie
+  const backupCookies = filterAuthCookies(await getSiteCookies(target));
   await clearSiteData(target);
 
   const popupWindow = await chrome.windows.create({
@@ -570,6 +697,7 @@ async function startQrLogin(site) {
     },
   });
   setBadge('...');
+  await ensureLoginDetectAlarm();
   if (tabId) {
     setTimeout(() => {
       chrome.tabs.sendMessage(tabId, { type: 'AUTO_CLICK_LOGIN' }).catch(() => null);
@@ -579,34 +707,11 @@ async function startQrLogin(site) {
   return { windowId: popupWindow.id, tabId };
 }
 
-// 手动收尾：保存新账号并关闭登录窗口
-async function finishQrLogin({ restorePrevious = false, site } = {}) {
-  const target = getSiteById(site?.id);
+// 取当前站点的进行中流程，没有则返回 null
+async function getCurrentPendingLogin(siteId) {
   const pending = await getStored(STORAGE_KEYS.pendingLogin, null);
-  const tabId = pending?.tabId || null;
-  await new Promise((resolve) => setTimeout(resolve, PROFILE_READY_DELAY_MS));
-  const account = await saveAccountFromTab(tabId, { ...LOGIN_TAB_SAVE_OPTIONS, site: target });
-  await chrome.storage.local.remove(STORAGE_KEYS.pendingLogin);
-  setBadge('');
-  await closeLoginWindow(pending?.windowId);
-  if (restorePrevious && pending?.backupCookies) {
-    await restoreCookies(pending.backupCookies, target);
-    await reloadSiteTabs(target);
-  }
-  return account;
-}
-
-// 取消添加账号，恢复登录前的账号
-async function cancelQrLogin(site) {
-  const target = getSiteById(site?.id);
-  const pending = await getStored(STORAGE_KEYS.pendingLogin, null);
-  await chrome.storage.local.remove(STORAGE_KEYS.pendingLogin);
-  setBadge('');
-  await closeLoginWindow(pending?.windowId);
-  if (pending?.backupCookies) {
-    await restoreCookies(pending.backupCookies, target);
-    await reloadSiteTabs(target);
-  }
+  if (!pending) return null;
+  return getSiteById(pending.siteId).id === getSiteById(siteId).id ? pending : null;
 }
 
 // 关闭扫码登录窗口，登记后避免被误判为异常关闭
@@ -615,6 +720,50 @@ async function closeLoginWindow(windowId) {
   autoClosingLoginWindows.add(windowId);
   await chrome.windows.remove(windowId).catch(() => null);
   setTimeout(() => autoClosingLoginWindows.delete(windowId), 5000);
+}
+
+// 手动收尾：保存新账号并关闭登录窗口
+async function finishQrLogin({ restorePrevious = false, site } = {}) {
+  const target = getSiteById(site?.id);
+  const pending = await getCurrentPendingLogin(target.id);
+  const tabId = pending?.tabId || null;
+  let account = null;
+  let saved = false;
+  try {
+    await sleep(PROFILE_READY_DELAY_MS);
+    account = await saveAccountFromTab(tabId, { ...LOGIN_TAB_SAVE_OPTIONS, site: target });
+    saved = true;
+    return account;
+  } finally {
+    // 必须 finally，否则保存失败会让弹窗卡死在「添加账号进行中」
+    // 每步独立容错：任何一步抛错都不能中断后续清理（关窗与还原 Cookie 更不能漏）
+    const cleanup = async (task) => {
+      try {
+        await task();
+      } catch (error) {
+        console.warn(`[${target.label}账号切换器] 登录收尾失败:`, error);
+      }
+    };
+    await cleanup(() => clearPendingLogin());
+    if (saved) {
+      setBadge('✓', BADGE_SUCCESS_COLOR);
+      setTimeout(() => setBadge(''), 2500);
+    } else {
+      setBadge('');
+    }
+    await cleanup(() => closeLoginWindow(pending?.windowId));
+    if (restorePrevious) await cleanup(() => restoreBackupCookies(pending?.backupCookies, target));
+  }
+}
+
+// 取消添加账号，恢复登录前的账号
+async function cancelQrLogin(site) {
+  const target = getSiteById(site?.id);
+  const pending = await getCurrentPendingLogin(target.id);
+  await clearPendingLogin();
+  setBadge('');
+  await closeLoginWindow(pending?.windowId);
+  await restoreBackupCookies(pending?.backupCookies, target);
 }
 
 // 判断 Cookie 是否已足以认定登录成功
@@ -628,19 +777,21 @@ function hasEnoughLoginCookies(cookies) {
   );
 }
 
-// 排一次登录检测，未登录时由 tryAutoFinishLogin 续排
+// 去抖后排一次登录检测，不递归续期（SW 会被回收）
 function scheduleAutoFinishLogin(tabId, site) {
   if (!tabId) return;
-  if (loginDetectTimers.has(tabId)) {
-    clearTimeout(loginDetectTimers.get(tabId));
-  }
-  const timer = setTimeout(() => {
-    loginDetectTimers.delete(tabId);
-    tryAutoFinishLogin(tabId, site).catch((error) => {
-      console.warn('[账号切换器] 自动保存扫码账号失败:', error);
-    });
-  }, LOGIN_DETECT_DELAY_MS);
-  loginDetectTimers.set(tabId, timer);
+  const siteId = getSiteById(site?.id).id;
+  const existing = loginDetectTimers.get(siteId);
+  if (existing) clearTimeout(existing);
+  loginDetectTimers.set(
+    siteId,
+    setTimeout(() => {
+      loginDetectTimers.delete(siteId);
+      tryAutoFinishLogin(tabId, site).catch((error) => {
+        console.warn('[账号切换器] 自动保存扫码账号失败:', error);
+      });
+    }, LOGIN_DETECT_DELAY_MS),
+  );
 }
 
 // 检测到登录成功后自动保存并关闭窗口
@@ -650,16 +801,10 @@ async function tryAutoFinishLogin(tabId, site) {
   if (!pending || pending.tabId !== tabId || pending.status === 'saving') return;
 
   const cookies = await getSiteCookies(target);
-  if (!hasEnoughLoginCookies(cookies)) {
-    scheduleAutoFinishLogin(tabId, target);
-    return;
-  }
+  if (!hasEnoughLoginCookies(cookies)) return;
 
   const profile = await askContentForAccountProfile(tabId);
-  if (!profile.isLoggedIn || profile.source !== 'router') {
-    scheduleAutoFinishLogin(tabId, target);
-    return;
-  }
+  if (!profile.isLoggedIn || profile.source !== 'router') return;
 
   await setStored({
     [STORAGE_KEYS.pendingLogin]: {
@@ -668,17 +813,46 @@ async function tryAutoFinishLogin(tabId, site) {
     },
   });
 
-  await new Promise((resolve) => setTimeout(resolve, PROFILE_READY_DELAY_MS));
-  const account = await saveAccountFromTab(tabId, {
-    ...LOGIN_TAB_SAVE_OPTIONS,
-    site: target,
-    preferredName: profile.name,
-  });
-  await chrome.storage.local.remove(STORAGE_KEYS.pendingLogin);
+  try {
+    await sleep(PROFILE_READY_DELAY_MS);
+    await saveAccountFromTab(tabId, {
+      ...LOGIN_TAB_SAVE_OPTIONS,
+      site: target,
+      preferredName: profile.name,
+    });
+  } catch (error) {
+    // 保存失败要放回状态，否则 pending 会永远卡在 saving
+    await setStored({
+      [STORAGE_KEYS.pendingLogin]: { ...pending, status: 'waiting' },
+    });
+    throw error;
+  }
+
+  await clearPendingLogin();
   setBadge('✓', BADGE_SUCCESS_COLOR);
   setTimeout(() => setBadge(''), 2500);
   await closeLoginWindow(pending.windowId);
-  console.log(`[${target.label}账号切换器] 已自动保存扫码账号:`, account.name);
+}
+
+// 交给浏览器下载队列，避免把大文件读进页面内存
+async function startBrowserDownload(url, rawFilename, site) {
+  if (!/^https?:\/\//i.test(String(url || ''))) {
+    throw new Error('下载地址不合法');
+  }
+
+  // 文件名只允许安全字符
+  const filename =
+    String(rawFilename || '')
+      .replace(SAFE_FILENAME_PATTERN, '')
+      .replace(/^\.+/, '')
+      .slice(0, 120) || `${getSiteById(site?.id).id}-media`;
+
+  return chrome.downloads.download({
+    url,
+    filename,
+    conflictAction: 'uniquify',
+    saveAs: false,
+  });
 }
 
 // 站点判定优先级：消息显式指定 > 发送方标签页 URL > 当前活动标签页 > 默认站点
@@ -706,7 +880,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           siteLabel: target.label,
           accounts,
           currentAccount: await getCurrentAccount(allAccounts, activeProfile, target),
-          pendingLogin: await getStored(STORAGE_KEYS.pendingLogin, null),
+          // 只认本站点的进行中流程，别站在添加账号不该影响本站点的按钮
+          pendingLogin: await getCurrentPendingLogin(target.id),
           canSaveCurrentAccount: activeProfile.source === 'router' && activeProfile.isLoggedIn,
         };
       }
@@ -730,7 +905,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         await deleteAccount(message.accountId);
         return { ok: true };
       case 'RENAME_ACCOUNT':
-        return { account: await renameAccount(message.accountId, message.name || '') };
+        return {
+          account: await renameAccount(message.accountId, message.name || ''),
+        };
+      case 'DOWNLOAD_MEDIA': {
+        // 走浏览器下载栈
+        const downloadId = await startBrowserDownload(message.url, message.filename, target);
+        return { downloadId };
+      }
       default:
         throw new Error('未知操作');
     }
@@ -764,36 +946,60 @@ chrome.tabs.onActivated.addListener(({ tabId }) => {
     .catch(() => null);
 });
 
-// 安装与启动时同步按钮可用性
 chrome.runtime.onInstalled.addListener(() => {
   syncActionAvailability().catch(() => null);
 });
 
+// 浏览器启动：同步按钮可用性，并重挂未完成登录流程的心跳
 chrome.runtime.onStartup.addListener(() => {
   syncActionAvailability().catch(() => null);
+  getStored(STORAGE_KEYS.pendingLogin, null)
+    .then(async (pending) => {
+      if (!pending?.tabId) return;
+      await ensureLoginDetectAlarm();
+    })
+    .catch(() => null);
 });
 
 syncActionAvailability().catch(() => null);
 
-// Cookie 变化时排一次登录检测，扫码登录后能及时感知
 chrome.cookies.onChanged.addListener((changeInfo) => {
-  const owner = getSiteByHost(changeInfo.cookie.domain);
-  if (!owner) return;
+  const site = getSiteByHost(changeInfo.cookie.domain);
+  if (!site) return;
   getStored(STORAGE_KEYS.pendingLogin, null).then((pending) => {
     if (!pending?.tabId) return;
-    scheduleAutoFinishLogin(pending.tabId, owner);
+    scheduleAutoFinishLogin(pending.tabId, site);
   });
 });
 
-// 登录窗口被手动关闭时清理状态
 chrome.windows.onRemoved.addListener((windowId) => {
-  getStored(STORAGE_KEYS.pendingLogin, null).then((pending) => {
+  getStored(STORAGE_KEYS.pendingLogin, null).then(async (pending) => {
     if (pending?.windowId !== windowId) return;
     if (autoClosingLoginWindows.has(windowId)) {
       autoClosingLoginWindows.delete(windowId);
       return;
     }
-    chrome.storage.local.remove(STORAGE_KEYS.pendingLogin);
+
+    // 手动关闭登录窗口时也要恢复备份 Cookie，不能只清状态
+    await clearPendingLogin();
     setBadge('');
+    await restoreBackupCookies(pending?.backupCookies, getSiteById(pending?.siteId));
   });
+});
+
+// 兜底心跳：SW 被回收后仍能唤醒继续检测登录
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== LOGIN_DETECT_ALARM) return;
+  getStored(STORAGE_KEYS.pendingLogin, null)
+    .then((pending) => {
+      if (!pending?.tabId) {
+        return chrome.alarms.clear(LOGIN_DETECT_ALARM).catch(() => null);
+      }
+      scheduleAutoFinishLogin(pending.tabId, getSiteById(pending.siteId));
+
+      // 补一次自动点击，供内容脚本未注入时使用
+      chrome.tabs.sendMessage(pending.tabId, { type: 'AUTO_CLICK_LOGIN' }).catch(() => null);
+      return null;
+    })
+    .catch(() => null);
 });
