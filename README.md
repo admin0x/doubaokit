@@ -1,7 +1,4 @@
-# 豆包助手 DoubaoKit
-
-[![Star](https://img.shields.io/github/stars/admin0x/doubaokit?style=flat&label=Star&color=f5a623)](https://github.com/admin0x/doubaokit/stargazers)
-[![Fork](https://img.shields.io/github/forks/admin0x/doubaokit?style=flat&label=Fork&color=6e56cf)](https://github.com/admin0x/doubaokit/forks)
+# 豆包助手
 
 豆包（doubao.com）与 Dola（dola.com）页面增强工具，提供**生成素材无水印下载**与**豆包多账号管理**，v0.2.0 起新增**提示词库面板**。
 
@@ -74,3 +71,7 @@
 
 > ⚠️ 浏览器是**引用**加载而不是复制：安装后不要删除或移动该文件夹，否则扩展会失效。
 
+[![Star](https://img.shields.io/github/stars/admin0x/doubaokit?style=flat&label=Star&color=f5a623)](https://github.com/admin0x/doubaokit/stargazers)
+[![Fork](https://img.shields.io/github/forks/admin0x/doubaokit?style=flat&label=Fork&color=6e56cf)](https://github.com/admin0x/doubaokit/forks)
+[![访问量](https://komarev.com/ghpvc/?username=admin0x&label=访问量&color=0e75b6&style=flat)](https://github.com/admin0x/doubaokit)
+[![Star History Chart](https://api.star-history.com/svg?repos=admin0x/doubaokit&type=Date)](https://star-history.com/#admin0x/doubaokit&Date)
