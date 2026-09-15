@@ -37,6 +37,8 @@
 - **视频无水印下载**：解析并下载生成视频的无水印版本。
 - **链接操作**：支持复制素材地址。
 - **多账号管理**：保存、添加、切换、改名和删除多个豆包账号，账号快照保存在本机浏览器。
+<img width="380" height="600" alt="screenshot-20260915-151855" src="https://github.com/user-attachments/assets/27f9b61d-2d6b-4fce-abbe-8833a0e82040" /><img width="380" height="600" alt="screenshot-20260915-151811" src="https://github.com/user-attachments/assets/aa12cd1c-1400-4892-a56a-73679b51f496" />
+
 - **提示词库面板**（仅 v0.2.0）：内置提示词模板，可一键写入输入框，提示词数据可以自由管理。
 
 ## 支持范围
