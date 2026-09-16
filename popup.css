@@ -1,0 +1,683 @@
+/* popup.css · 弹窗样式：暗黑玻璃卡片风格 · @author Li · GPL-3.0 · https://github.com/admin8384/doubaokit */
+
+/* 暗黑玻璃风格 · 白色按钮版 · 仅样式调整，DOM 结构与交互逻辑保持不变 */
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #07070b;
+  --glass: rgba(255, 255, 255, 0.055);
+  --glass-strong: rgba(255, 255, 255, 0.1);
+  --glass-hover: rgba(255, 255, 255, 0.13);
+  --stroke: rgba(255, 255, 255, 0.09);
+  --stroke-strong: rgba(255, 255, 255, 0.17);
+  --text: #f5f5f7;
+  --text-2: rgba(235, 235, 245, 0.62);
+  --text-3: rgba(235, 235, 245, 0.34);
+  --ink: #14151a;
+  --blur: blur(22px) saturate(180%);
+  --radius: 18px;
+  --radius-sm: 12px;
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.42);
+  --inner-top: inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+html {
+  width: 380px;
+  height: 600px;
+  overflow: hidden;
+}
+
+body {
+  width: 380px;
+  height: 600px;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  background:
+    radial-gradient(560px 340px at 8% -8%, rgba(255, 255, 255, 0.22), transparent 62%),
+    radial-gradient(460px 320px at 108% 12%, rgba(255, 255, 255, 0.13), transparent 60%),
+    radial-gradient(420px 300px at 50% 118%, rgba(255, 255, 255, 0.07), transparent 62%), var(--bg);
+  font:
+    13px/1.5 -apple-system,
+    BlinkMacSystemFont,
+    'SF Pro Text',
+    'SF Pro Display',
+    'Helvetica Neue',
+    'PingFang SC',
+    'Microsoft YaHei',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 顶部玻璃渐变光晕（顶部亮 → 向下淡出） */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 210px;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(320px 160px at 50% -40%, rgba(255, 255, 255, 0.2), transparent 70%),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.15) 0%,
+      rgba(255, 255, 255, 0.06) 46%,
+      transparent 100%
+    );
+}
+
+.app {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: 0 14px 12px;
+}
+
+.account-manager {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+button {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-sm);
+  background: var(--glass);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  box-shadow: var(--inner-top);
+  color: var(--text);
+  font: 600 14px/1 inherit;
+  cursor: pointer;
+  transition:
+    transform 0.18s var(--ease),
+    background 0.18s var(--ease),
+    border-color 0.18s var(--ease),
+    box-shadow 0.18s var(--ease),
+    opacity 0.18s var(--ease);
+}
+
+button:hover {
+  background: var(--glass-hover);
+  border-color: var(--stroke-strong);
+}
+
+button:active {
+  transform: scale(0.975);
+  opacity: 0.8;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.36;
+  transform: none;
+}
+
+/* ---------- 玻璃卡片基类 ---------- */
+.current-account,
+.pending,
+.account-card {
+  position: relative;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  background: var(--glass);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  box-shadow: var(--shadow), var(--inner-top);
+}
+
+/* ---------- 顶部标题 ---------- */
+.hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 18px 0 14px;
+  padding: 0 6px;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  background: linear-gradient(120deg, #ffffff 20%, rgba(255, 255, 255, 0.62));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ---------- 当前账号卡 ---------- */
+.current-account {
+  margin: 0 0 12px;
+  padding: 14px 16px;
+}
+
+.current-label {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.current-body {
+  min-height: 44px;
+}
+
+.current-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.current-empty strong {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.current-empty span {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+/* ---------- 进行中提示卡 ---------- */
+.pending {
+  margin: 0 0 12px;
+  padding: 15px 16px;
+  border-color: rgba(255, 255, 255, 0.22);
+  background: linear-gradient(140deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.04));
+  box-shadow:
+    0 8px 30px rgba(0, 0, 0, 0.32),
+    var(--inner-top);
+}
+
+.pending strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pending p {
+  margin: 6px 0 12px;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* ---------- 操作按钮 ---------- */
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 0 0 4px;
+}
+
+.actions button,
+.row button {
+  height: 44px;
+  min-height: 44px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+/* 主按钮：实白 */
+.primary {
+  border-color: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
+  background: linear-gradient(165deg, #ffffff, #ececf1);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.34),
+    0 2px 10px rgba(255, 255, 255, 0.14);
+}
+
+.primary:hover {
+  background: linear-gradient(165deg, #ffffff, #f6f6f8);
+  border-color: #fff;
+}
+
+.action-warning {
+  margin: 8px 4px 0;
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+}
+
+/* ---------- 分组标题 ---------- */
+.section-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 18px 6px 9px;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.accounts-section {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ---------- 通用滚动条：可滚动列表统一挂这个类名 ---------- */
+/* 注意：Chrome 121+ 里元素同时存在标准滚动条属性时，::-webkit-scrollbar 会被整体忽略，故标准属性放进 @supports 兜底 */
+.scroll-pane {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.scroll-pane::-webkit-scrollbar {
+  width: 10px;
+  background: transparent;
+}
+
+.scroll-pane::-webkit-scrollbar-track {
+  border: 0;
+  background: transparent;
+}
+
+.scroll-pane::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.18);
+  background-clip: content-box;
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.14);
+  transition:
+    background 0.2s var(--ease),
+    border-width 0.2s var(--ease);
+}
+
+.scroll-pane::-webkit-scrollbar-thumb:hover {
+  border-width: 2px;
+  background: rgba(255, 255, 255, 0.32);
+  background-clip: content-box;
+}
+
+.scroll-pane::-webkit-scrollbar-thumb:active {
+  background: rgba(255, 255, 255, 0.42);
+  background-clip: content-box;
+}
+
+.scroll-pane::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .scroll-pane {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+  }
+}
+
+.account-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  padding: 2px;
+}
+
+/* ---------- 账号卡片 ---------- */
+.account-card {
+  padding: 13px 15px;
+  transition:
+    transform 0.22s var(--ease),
+    border-color 0.22s var(--ease),
+    box-shadow 0.22s var(--ease),
+    background 0.22s var(--ease);
+}
+
+.account-card:hover {
+  background: var(--glass-strong);
+  border-color: var(--stroke-strong);
+}
+
+.account-card.current {
+  border-color: rgba(255, 255, 255, 0.34);
+  background: linear-gradient(140deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.04));
+  box-shadow:
+    0 8px 28px rgba(0, 0, 0, 0.36),
+    var(--inner-top);
+}
+
+.account-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.account-avatar {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border: 1px solid var(--stroke);
+  border-radius: 50%;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.account-avatar.fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 700;
+  background: linear-gradient(145deg, #ffffff, #c9cbd4);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+.account-info {
+  min-width: 0;
+}
+
+.account-name {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.current-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: 1px;
+}
+
+.account-meta {
+  margin-top: 3px;
+  color: var(--text-2);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.card-actions button {
+  min-height: 32px;
+  padding: 0 6px;
+  border-radius: 10px;
+  border-color: transparent;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(235, 245, 255, 0.92);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.card-actions button:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+.danger {
+  color: #ff6a60;
+  background: rgba(255, 69, 58, 0.14);
+}
+
+.danger:hover {
+  background: rgba(255, 69, 58, 0.24);
+  color: #ff8078;
+}
+
+.empty {
+  padding: 30px 16px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: none;
+  color: var(--text-3);
+  font-size: 13px;
+  text-align: center;
+}
+
+.status {
+  min-height: 16px;
+  margin: 10px 4px 0;
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+/* ---------- 统一 UI 提示窗 ---------- */
+.dialog-layer {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(6, 6, 9, 0.5);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  opacity: 0;
+  transition: opacity 0.22s var(--ease);
+}
+
+.dialog-card {
+  position: relative;
+  width: 100%;
+  padding: 20px 18px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 22px;
+  background: linear-gradient(165deg, rgba(30, 30, 35, 0.9), rgba(11, 11, 15, 0.94));
+  box-shadow:
+    0 28px 70px rgba(0, 0, 0, 0.6),
+    var(--inner-top);
+  text-align: center;
+  transform: translateY(10px) scale(0.97);
+  opacity: 0;
+  transition:
+    transform 0.26s var(--ease),
+    opacity 0.26s var(--ease);
+}
+
+.dialog-layer.open .dialog-backdrop {
+  opacity: 1;
+}
+
+.dialog-layer.open .dialog-card {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+
+.dialog-icon {
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 12px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.dialog-icon svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.dialog-icon.info {
+  color: #ffffff;
+}
+
+.dialog-icon.warning {
+  color: #ffd60a;
+  border-color: rgba(255, 214, 10, 0.3);
+  background: rgba(255, 214, 10, 0.14);
+}
+
+.dialog-icon.danger {
+  color: #ff6a60;
+  border-color: rgba(255, 69, 58, 0.32);
+  background: rgba(255, 69, 58, 0.16);
+}
+
+.dialog-icon.success {
+  color: #30d158;
+  border-color: rgba(48, 209, 88, 0.32);
+  background: rgba(48, 209, 88, 0.16);
+}
+
+.dialog-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.dialog-text {
+  margin: 8px 0 0;
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.dialog-text:empty {
+  display: none;
+}
+
+.dialog-input {
+  width: 100%;
+  height: 38px;
+  margin-top: 14px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.07);
+  font: 13px/1 inherit;
+  outline: none;
+  transition:
+    border-color 0.18s var(--ease),
+    background 0.18s var(--ease);
+}
+
+.dialog-input:focus {
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.dialog-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+  margin-top: 18px;
+}
+
+.dialog-actions.single {
+  grid-template-columns: 1fr;
+}
+
+.dialog-btn {
+  height: 40px;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--stroke);
+  border-radius: 13px;
+  color: rgba(240, 248, 255, 0.95);
+  background: rgba(255, 255, 255, 0.08);
+  font: 600 13px/1 inherit;
+  cursor: pointer;
+  transition:
+    background 0.18s var(--ease),
+    transform 0.18s var(--ease),
+    opacity 0.18s var(--ease);
+}
+
+.dialog-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.dialog-btn:active {
+  transform: scale(0.975);
+  opacity: 0.85;
+}
+
+.dialog-btn:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline-offset: 2px;
+}
+
+.dialog-btn.primary {
+  color: var(--ink);
+  border-color: rgba(255, 255, 255, 0.9);
+  background: linear-gradient(160deg, #ffffff, #ececf1);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.34);
+}
+
+.dialog-btn.primary:hover {
+  background: linear-gradient(160deg, #ffffff, #f6f6f8);
+}
+
+.dialog-btn.primary.danger {
+  color: #d8322a;
+}
+
+.hidden {
+  display: none !important;
+}
