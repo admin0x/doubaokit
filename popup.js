@@ -1,5 +1,5 @@
 // popup.js · 弹窗交互逻辑：账号列表渲染、添加与切换（豆包 / Dola 双站点）
-// @author Li · GPL-3.0 · https://github.com/admin8384/doubaokit
+// @author Li · GPL-3.0 · https://github.com/admin0x/doubaokit
 
 // 受支持站点（background 注册表的裁剪副本：弹窗只需 id / label / hosts）
 const SITES = [
@@ -30,7 +30,6 @@ const finishLoginBtn = document.getElementById('finishLoginBtn');
 const cancelLoginBtn = document.getElementById('cancelLoginBtn');
 const currentAccountBody = document.getElementById('currentAccountBody');
 const accountManager = document.getElementById('accountManager');
-const actionWarning = document.getElementById('actionWarning');
 const dialogLayer = document.getElementById('dialogLayer');
 const dialogIcon = document.getElementById('dialogIcon');
 const dialogTitle = document.getElementById('dialogTitle');
@@ -39,6 +38,8 @@ const dialogInput = document.getElementById('dialogInput');
 const dialogActions = document.getElementById('dialogActions');
 const dialogCancelBtn = document.getElementById('dialogCancel');
 const dialogConfirmBtn = document.getElementById('dialogConfirm');
+const siteTag = document.getElementById('siteTag');
+const actionWarning = document.getElementById('actionWarning');
 
 // 当前生效账号的 id
 let currentAccountId = '';
@@ -51,15 +52,15 @@ let currentSite = null;
 
 // 向后台发消息并带上当前站点 id
 function send(type, payload = {}) {
-  return chrome.runtime
-    .sendMessage({ type, siteId: currentSite?.id || '', ...payload })
-    .then((response) => {
-      if (!response?.ok) throw new Error(response?.error || '操作失败');
-      return response;
-    });
+  const message = { type, siteId: currentSite?.id || '', ...payload };
+  return chrome.runtime.sendMessage(message).then((response) => {
+    if (!response?.ok) throw new Error(response?.error || '操作失败');
+    return response;
+  });
 }
 
-// 弹窗图标：按提示语气选择
+// 统一 UI 提示窗，替代原生 alert / confirm / prompt
+// 提示窗图标：按提示语气选择
 const DIALOG_ICONS = {
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/>',
   warning: '<path d="M12 3 2.7 19h18.6L12 3Z"/><path d="M12 10v4"/><path d="M12 17h.01"/>',
@@ -73,7 +74,7 @@ function closeDialog() {
   setTimeout(() => dialogLayer.classList.add('hidden'), 240);
 }
 
-// 打开提示窗，confirm 返回布尔、prompt 返回字符串或 null
+// 打开提示窗，confirm 返回布尔、prompt 返回字符串
 function openDialog({
   title = '提示',
   message = '',
@@ -195,10 +196,17 @@ function formatTime(value) {
 
 // HTML 转义，避免账号名破坏结构
 function escapeHtml(value) {
-  return String(value ?? '').replace(/[&<>"']/g, (char) => {
-    const escaped = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-    return escaped[char];
-  });
+  return String(value ?? '').replace(
+    /[&<>"']/g,
+    (char) =>
+      ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[char],
+  );
 }
 
 // 取头像占位文字，缺省用「豆」
@@ -391,12 +399,17 @@ accountList.addEventListener('click', (event) => {
 function applySite(site) {
   currentSite = site;
   if (!site) return;
+  siteTag.textContent = site.label;
   actionWarning.textContent = `添加账号会退出当前${site.label}账号。若需要保留当前账号，请先点击“保存当前账号”。`;
+  document.title = `${site.label}助手 · 账号管理`;
 }
 
 // 入口：识别当前标签页站点，受支持才加载账号数据
 async function initPopup() {
-  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [activeTab] = await chrome.tabs.query({
+    active: true,
+    currentWindow: true,
+  });
   let hostname = '';
   try {
     hostname = new URL(activeTab?.url || '').hostname.replace(/^www\./, '');

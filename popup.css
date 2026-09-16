@@ -1,4 +1,4 @@
-/* popup.css · 弹窗样式：暗黑玻璃卡片风格 · @author Li · GPL-3.0 · https://github.com/admin8384/doubaokit */
+/* popup.css · 弹窗样式：暗黑玻璃卡片风格 · @author Li · GPL-3.0 · https://github.com/admin0x/doubaokit */
 
 /* 暗黑玻璃风格 · 白色按钮版 · 仅样式调整，DOM 结构与交互逻辑保持不变 */
 * {
@@ -167,6 +167,29 @@ h1 {
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
+}
+
+/* ---------- 当前站点标识（豆包 / Dola） ---------- */
+.site-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  margin-bottom: 4px;
+  padding: 0 10px;
+  border: 1px solid var(--stroke-strong);
+  border-radius: 999px;
+  background: var(--glass-strong);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.site-tag:empty {
+  display: none;
 }
 
 /* ---------- 当前账号卡 ---------- */
