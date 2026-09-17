@@ -99,8 +99,8 @@
 ### 多账号管理
 
 <div align="center">
-  <img width="380" src="https://github.com/user-attachments/assets/27f9b61d-2d6b-4fce-abbe-8833a0e82040" alt="多账号管理-1" />
-  <img width="380" src="https://github.com/user-attachments/assets/aa12cd1c-1400-4892-a56a-73679b51f496" alt="多账号管理-2" />
+  <img width="250" src="https://github.com/user-attachments/assets/27f9b61d-2d6b-4fce-abbe-8833a0e82040" alt="多账号管理-1" />
+  <img width="250" src="https://github.com/user-attachments/assets/aa12cd1c-1400-4892-a56a-73679b51f496" alt="多账号管理-2" />
 </div>
 
 ---
